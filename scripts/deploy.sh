@@ -147,7 +147,7 @@ fi
 
 # Run migrations
 log "🔄 Running Alembic migrations..."
-docker-compose -f $COMPOSE_FILE run --rm bot alembic upgrade head
+docker-compose -f $COMPOSE_FILE run --rm bot sh -c "cd apps/bot && alembic upgrade head"
 
 # Start all services
 log "🚀 Starting all services..."

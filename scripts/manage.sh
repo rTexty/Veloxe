@@ -115,7 +115,7 @@ case "${1:-}" in
     
     migrate)
         log "🗄️ Running database migrations..."
-        docker-compose -f $COMPOSE_FILE run --rm bot alembic upgrade head
+        docker-compose -f $COMPOSE_FILE run --rm bot sh -c "cd apps/bot && alembic upgrade head"
         log "✅ Migrations completed"
         ;;
     
