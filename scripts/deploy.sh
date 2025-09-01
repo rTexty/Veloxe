@@ -69,12 +69,20 @@ if [ ! -f $COMPOSE_FILE ]; then
     error "❌ $COMPOSE_FILE not found."
 fi
 
+# Load environment variables from .env file
+log "📂 Loading environment variables from .env file..."
+if [ -f .env ]; then
+    export $(grep -v '^#' .env | xargs)
+fi
+
 # Verify required environment variables
 log "🔍 Checking environment variables..."
 required_vars=("BOT_TOKEN" "OPENAI_API_KEY" "ADMIN_SECRET" "POSTGRES_PASSWORD")
 for var in "${required_vars[@]}"; do
     if [ -z "${!var}" ]; then
-        error "❌ Required environment variable $var is not set"
+        error "❌ Required environment variable $var is not set in .env file"
+    else
+        log "✅ $var is set"
     fi
 done
 

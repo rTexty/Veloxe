@@ -198,31 +198,59 @@ cat > scripts/start-external.sh << 'EOF'
 set -e
 
 GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
 NC='\033[0m'
 
 log() {
     echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')] $1${NC}"
 }
 
+warn() {
+    echo -e "${YELLOW}[WARNING] $1${NC}"
+}
+
+error() {
+    echo -e "${RED}[ERROR] $1${NC}"
+    exit 1
+}
+
 log "🌐 Запуск Veloxe с внешним доступом..."
 
 # Проверка .env файла
 if [ ! -f .env ]; then
-    echo "❌ Файл .env не найден. Скопируйте .env.external в .env и настройте его."
-    exit 1
+    error "❌ Файл .env не найден. Скопируйте .env.external в .env и настройте его."
 fi
+
+# Load environment variables
+log "📂 Загрузка переменных окружения из .env..."
+if [ -f .env ]; then
+    export $(grep -v '^#' .env | grep -v '^$' | xargs)
+fi
+
+# Проверка обязательных переменных
+required_vars=("BOT_TOKEN" "OPENAI_API_KEY" "ADMIN_SECRET" "POSTGRES_PASSWORD")
+for var in "${required_vars[@]}"; do
+    if [ -z "${!var}" ]; then
+        error "❌ Переменная $var не установлена в .env файле"
+    fi
+done
 
 # Остановка существующих сервисов
 log "🛑 Остановка существующих сервисов..."
 docker-compose -f docker-compose.external.yml down 2>/dev/null || true
+docker-compose -f docker-compose.prod.yml down 2>/dev/null || true
 
 # Запуск с внешним доступом
 log "🚀 Запуск сервисов с внешним доступом..."
 docker-compose -f docker-compose.external.yml up -d
 
+# Получаем IP сервера
+SERVER_IP=$(hostname -I | awk '{print $1}' 2>/dev/null || echo "YOUR_SERVER_IP")
+
 log "✅ Сервисы запущены!"
-log "🌐 Админка доступна по адресу: http://YOUR_SERVER_IP:3000"
-log "🔗 API доступен по адресу: http://YOUR_SERVER_IP:8000"
+log "🌐 Админка доступна по адресу: http://$SERVER_IP:3000"
+log "🔗 API доступен по адресу: http://$SERVER_IP:8000/docs"
 EOF
 
 chmod +x scripts/start-external.sh

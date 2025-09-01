@@ -7,6 +7,11 @@ set -e
 
 COMPOSE_FILE="docker-compose.prod.yml"
 
+# Load environment variables if .env exists
+if [ -f .env ]; then
+    export $(grep -v '^#' .env | grep -v '^$' | xargs) 2>/dev/null || true
+fi
+
 # Colors for output
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
