@@ -9,7 +9,9 @@ COMPOSE_FILE="docker-compose.prod.yml"
 
 # Load environment variables if .env exists
 if [ -f .env ]; then
-    export $(grep -v '^#' .env | grep -v '^$' | xargs) 2>/dev/null || true
+    set -a  # automatically export all variables
+    source .env 2>/dev/null || true
+    set +a  # disable automatic export
 fi
 
 # Colors for output

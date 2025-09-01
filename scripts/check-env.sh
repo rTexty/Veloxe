@@ -44,9 +44,13 @@ log "✅ Файл .env найден"
 # Загрузка переменных окружения
 log "📂 Загрузка переменных окружения..."
 if [ -f .env ]; then
-    export $(grep -v '^#' .env | grep -v '^$' | xargs) 2>/dev/null || {
+    set -a  # automatically export all variables
+    if source .env 2>/dev/null; then
+        log "✅ Переменные успешно загружены"
+    else
         warn "⚠️ Проблема с загрузкой .env файла. Проверьте синтаксис."
-    }
+    fi
+    set +a  # disable automatic export
 fi
 
 echo

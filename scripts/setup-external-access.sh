@@ -225,7 +225,9 @@ fi
 # Load environment variables
 log "📂 Загрузка переменных окружения из .env..."
 if [ -f .env ]; then
-    export $(grep -v '^#' .env | grep -v '^$' | xargs)
+    set -a  # automatically export all variables
+    source .env
+    set +a  # disable automatic export
 fi
 
 # Проверка обязательных переменных
