@@ -773,10 +773,10 @@ export default function Settings() {
       </div>
       
       {/* Active Tab Description */}
-      {settingTabs[activeTab] && (
+      {settingTabs[activeTab as keyof typeof settingTabs] && (
         <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
-          <h3 className="font-medium text-blue-900 mb-1">{settingTabs[activeTab].title}</h3>
-          <p className="text-blue-700 text-sm">{settingTabs[activeTab].description}</p>
+          <h3 className="font-medium text-blue-900 mb-1">{settingTabs[activeTab as keyof typeof settingTabs].title}</h3>
+          <p className="text-blue-700 text-sm">{settingTabs[activeTab as keyof typeof settingTabs].description}</p>
         </div>
       )}
       
