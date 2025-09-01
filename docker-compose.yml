@@ -1,0 +1,91 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: veloxe
+      POSTGRES_USER: veloxe
+      POSTGRES_PASSWORD: veloxe123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U veloxe -d veloxe"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Telegram Bot
+  bot:
+    build:
+      context: .
+      dockerfile: apps/bot/Dockerfile
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - DATABASE_URL=postgresql+asyncpg://veloxe:veloxe123@postgres:5432/veloxe
+      - REDIS_URL=redis://redis:6379/0
+      - ADMIN_SECRET=${ADMIN_SECRET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./apps/bot:/app/apps/bot
+      - ./shared:/app/shared
+    restart: unless-stopped
+
+  # Admin API (FastAPI)
+  admin-api:
+    build:
+      context: .
+      dockerfile: apps/admin/backend/Dockerfile
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://veloxe:veloxe123@postgres:5432/veloxe
+      - REDIS_URL=redis://redis:6379/0
+      - ADMIN_SECRET=${ADMIN_SECRET}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./apps/admin/backend:/app/apps/admin/backend
+      - ./shared:/app/shared
+    restart: unless-stopped
+
+  # Admin Frontend (React)
+  admin-frontend:
+    build:
+      context: .
+      dockerfile: apps/admin/frontend/Dockerfile
+    ports:
+      - "3000:3000"
+    depends_on:
+      - admin-api
+    volumes:
+      - ./apps/admin/frontend/src:/app/src
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:

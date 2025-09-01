@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(lsof:*)",
+      "Bash(source:*)",
+      "Bash(python:*)",
+      "Bash(curl:*)",
+      "WebSearch",
+      "Bash(pip install:*)",
+      "Bash(alembic upgrade:*)",
+      "WebFetch(domain:docs.cryptocloud.plus)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
