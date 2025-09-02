@@ -85,6 +85,7 @@ services:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-veloxe}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-veloxe}
       - REDIS_URL=redis://redis:6379/0
       - ADMIN_CORS_ORIGINS=http://localhost:3000,http://145.223.117.108:3000
+      - SERVER_IP=145.223.117.108
       - ADMIN_SECRET=${ADMIN_SECRET}
       - ENVIRONMENT=production
       - SENTRY_DSN=${SENTRY_DSN}

@@ -17,10 +17,17 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Get allowed origins from environment variable or use defaults
+allowed_origins = os.getenv("ADMIN_CORS_ORIGINS", "http://localhost:3000,http://localhost:3001,http://localhost:5173").split(",")
+# Add the server IP if accessing directly via IP
+server_ip = os.getenv("SERVER_IP")
+if server_ip:
+    allowed_origins.append(f"http://{server_ip}:3000")
+
 # CORS middleware for React frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001", "http://localhost:5173", "145.223.117.108:3000"],  # React dev servers
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
