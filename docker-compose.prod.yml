@@ -111,7 +111,7 @@ services:
       context: .
       dockerfile: apps/admin/frontend/Dockerfile.prod
       args:
-        - REACT_APP_API_URL=http://localhost:8000/api
+        - REACT_APP_API_URL=http://145.223.117.108:8000/api
     container_name: veloxe_admin_frontend
     ports:
       - "3000:80"  # Фронтенд доступен извне
