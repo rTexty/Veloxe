@@ -11,6 +11,19 @@ class Settings(BaseSettings):
     admin_secret: str
     cryptocloud_api_key: Optional[str] = None
     
+    # Production settings
+    sentry_dsn: Optional[str] = None
+    use_ssl: Optional[str] = None
+    ssl_cert_path: Optional[str] = None
+    ssl_key_path: Optional[str] = None
+    rate_limit_per_minute: Optional[str] = None
+    max_concurrent_users: Optional[str] = None
+    backup_enabled: Optional[str] = None
+    backup_schedule: Optional[str] = None
+    backup_retention_days: Optional[str] = None
+    health_check_enabled: Optional[str] = None
+    metrics_enabled: Optional[str] = None
+    
     class Config:
         # Look for .env file in project root
         env_file = os.path.join(os.path.dirname(__file__), "../..", ".env")
