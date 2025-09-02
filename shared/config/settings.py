@@ -11,6 +11,19 @@ class Settings(BaseSettings):
     admin_secret: str
     cryptocloud_api_key: Optional[str] = None
     
+    # Database settings
+    postgres_user: Optional[str] = None
+    postgres_password: Optional[str] = None
+    postgres_db: Optional[str] = None
+    
+    # Server settings
+    host: Optional[str] = None
+    port: Optional[str] = None
+    workers: Optional[str] = None
+    log_level: Optional[str] = None
+    environment: Optional[str] = None
+    debug: Optional[str] = None
+    
     # Production settings
     sentry_dsn: Optional[str] = None
     use_ssl: Optional[str] = None
