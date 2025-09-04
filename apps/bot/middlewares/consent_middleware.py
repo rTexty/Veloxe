@@ -57,13 +57,13 @@ class ConsentMiddleware(BaseMiddleware):
                     await UXHelper.smooth_answer(
                         event,
                         consent_text,
-                        typing_delay=0.8
+                        typing_delay=0.3
                     )
                 elif isinstance(event, CallbackQuery):
                     await UXHelper.smooth_edit_text(
                         event.message,
                         consent_text,
-                        typing_delay=0.8
+                        typing_delay=0.3
                     )
                 
                 return  # Block further processing

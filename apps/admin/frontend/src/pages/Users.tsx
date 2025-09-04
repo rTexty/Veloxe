@@ -53,8 +53,7 @@ export default function Users() {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ active: !active })
+        }
       });
       
       if (response.ok) {
@@ -66,6 +65,33 @@ export default function Users() {
       }
     } catch (error) {
       console.error('Error updating subscription:', error);
+    }
+  };
+
+  const deleteUser = async (userId: number, userName: string) => {
+    if (!confirm(`Вы уверены, что хотите удалить пользователя "${userName}"?\n\nЭто действие нельзя отменить!`)) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('admin_token');
+      const response = await fetch(`/api/users/${userId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        setUsers(users.filter(user => user.id !== userId));
+        alert('Пользователь успешно удален');
+      } else {
+        const error = await response.json();
+        alert(`Ошибка удаления: ${error.detail}`);
+      }
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      alert('Ошибка при удалении пользователя');
     }
   };
 
@@ -182,8 +208,16 @@ export default function Users() {
                                 ? 'bg-red-500 hover:bg-red-600 text-white'
                                 : 'bg-green-500 hover:bg-green-600 text-white'
                             }`}
+                            title={user.subscription_active ? 'Отключить подписку' : 'Включить подписку'}
                           >
-                            {user.subscription_active ? 'Отключить' : 'Включить'}
+                            {user.subscription_active ? '📵 Отключить подписку' : '⭐ Включить подписку'}
+                          </button>
+                          <button
+                            onClick={() => deleteUser(user.id, user.name || user.telegram_id)}
+                            className="px-2 py-1 rounded text-xs bg-gray-600 hover:bg-red-600 text-white transition-colors"
+                            title="Удалить пользователя"
+                          >
+                            🗑️ Удалить
                           </button>
                         </div>
                       </td>

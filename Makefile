@@ -91,3 +91,8 @@ shell-db:
 
 shell-redis:
 	docker-compose exec redis redis-cli
+
+bot:
+	pkill -f main.py
+	cd apps/bot && python3 main.py
+

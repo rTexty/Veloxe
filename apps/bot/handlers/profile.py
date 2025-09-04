@@ -94,15 +94,15 @@ async def profile_handler(message: types.Message):
         
         # Subscription status
         profile_text += "\n**💳 Подписка:**\n"
-        if subscription and subscription.is_active and subscription.ends_at > datetime.utcnow():
+        if subscription and subscription.is_active and subscription.ends_at and subscription.ends_at > datetime.utcnow():
+            # Active subscription
             profile_text += f"✅ Активна до {subscription.ends_at.strftime('%d.%m.%Y')}"
-        elif subscription:
-            if subscription.ends_at < datetime.utcnow():
-                profile_text += f"❌ Истекла {subscription.ends_at.strftime('%d.%m.%Y')}"
-            else:
-                profile_text += "❌ Не активна"
+        elif subscription and subscription.ends_at and subscription.ends_at < datetime.utcnow() and subscription.plan_name:
+            # User had a real subscription but it expired (only if they had a plan_name)
+            profile_text += f"❌ Истекла {subscription.ends_at.strftime('%d.%m.%Y')}"
         else:
-            profile_text += "❌ Не активна"
+            # No subscription or never had active one
+            profile_text += "❌ Подписка отсутствует"
         
         # Daily messages info for free users
         if subscription and (not subscription.is_active or subscription.ends_at <= datetime.utcnow()):
@@ -117,6 +117,9 @@ async def profile_handler(message: types.Message):
             [
                 InlineKeyboardButton(text="🗑 Удалить данные", callback_data="profile_delete_data"),
                 InlineKeyboardButton(text="🚫 Удалить профиль", callback_data="profile_delete_profile")
+            ],
+            [
+                InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_message")
             ]
         ])
         
@@ -124,7 +127,7 @@ async def profile_handler(message: types.Message):
         main_menu = await show_main_menu()
         
         await message.answer(profile_text, reply_markup=keyboard, parse_mode="Markdown")
-        await message.answer("Выберите действие:", reply_markup=main_menu)
+        
 
 
 async def profile_edit_handler(callback: types.CallbackQuery):
@@ -133,7 +136,8 @@ async def profile_edit_handler(callback: types.CallbackQuery):
         "Для изменения профиля пройдите анкету заново:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📝 Пройти анкету", callback_data="survey_name")],
-            [InlineKeyboardButton(text="◀️ Назад к профилю", callback_data="back_to_profile")]
+            [InlineKeyboardButton(text="◀️ Назад к профилю", callback_data="back_to_profile")],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_message")]
         ])
     )
 
@@ -167,6 +171,9 @@ async def profile_delete_data_handler(callback: types.CallbackQuery):
             [
                 InlineKeyboardButton(text="✅ Да, удалить", callback_data="confirm_delete_data"),
                 InlineKeyboardButton(text="❌ Отмена", callback_data="back_to_profile")
+            ],
+            [
+                InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_message")
             ]
         ]),
         parse_mode="Markdown"
@@ -216,7 +223,8 @@ async def profile_delete_profile_handler(callback: types.CallbackQuery, state: F
         "💰 Деньги за неиспользованную подписку НЕ возвращаются автоматически.\n\n"
         "Для подтверждения напишите: **DELETE**",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="❌ Отмена", callback_data="back_to_profile")]
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="back_to_profile")],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_message")]
         ]),
         parse_mode="Markdown"
     )
@@ -260,6 +268,9 @@ async def back_to_profile_handler(callback: types.CallbackQuery, state: FSMConte
     await profile_handler(callback.message)
 
 
+# cancel_message_handler is now universal in dialog.py
+
+
 async def subscription_menu_handler(message: types.Message):
     """Handle subscription menu button"""
     telegram_id = str(message.from_user.id)
@@ -301,12 +312,12 @@ async def subscription_menu_handler(message: types.Message):
         # Build subscription status text
         text = "💳 **Подписка**\n\n"
         
-        if subscription and subscription.is_active and subscription.ends_at > datetime.utcnow():
+        if subscription and subscription.is_active and subscription.ends_at and subscription.ends_at > datetime.utcnow():
             text += f"✅ **Активна до:** {subscription.ends_at.strftime('%d.%m.%Y %H:%M')}\n\n"
-        elif subscription and subscription.ends_at < datetime.utcnow():
+        elif subscription and subscription.ends_at and subscription.ends_at < datetime.utcnow() and subscription.plan_name:
             text += f"❌ **Истекла:** {subscription.ends_at.strftime('%d.%m.%Y %H:%M')}\n\n"
         else:
-            text += "❌ **Подписка неактивна**\n\n"
+            text += "❌ **Подписка отсутствует**\n\n"
         
         text += "📋 **Доступные тарифы:**\n\n"
         
@@ -324,9 +335,138 @@ async def subscription_menu_handler(message: types.Message):
                 )
             ])
         
+        # Add cancel button to subscription menu
+        keyboard_rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_message")])
+        
         keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
         
         await message.answer(text, reply_markup=keyboard, parse_mode="Markdown")
+
+
+async def continue_handler(message: types.Message):
+    """Handle continue button - generate follow-up response"""
+    telegram_id = str(message.from_user.id)
+    
+    async with async_session() as session:
+        user_service = UserService(session)
+        conv_service = ConversationService(session)
+        
+        user = await user_service.get_or_create_user(telegram_id)
+        
+        # Check if user completed onboarding
+        if not user.terms_accepted or not user.name:
+            await message.answer("Пожалуйста, сначала завершите регистрацию: /start")
+            return
+        
+        # Check if user can send messages  
+        limit_check = await conv_service.can_user_send_message(user)
+        if not limit_check['can_send']:
+            from .dialog import show_paywall
+            await show_paywall(message, limit_check)
+            return
+        
+        # Get current conversation
+        conversation = await conv_service.get_or_create_active_conversation(user)
+        history = await conv_service.get_conversation_history(conversation)
+        
+        if not history:
+            await message.answer("💭 Давайте сначала начнем диалог! Расскажите, что у вас на душе?")
+            return
+        
+        # Show typing
+        await message.bot.send_chat_action(message.chat.id, "typing")
+        
+        # Generate continue response
+        from services.gpt_service import GPTService
+        from services.settings_cache import settings_cache
+        
+        gpt_service = GPTService()
+        settings_dict = await settings_cache.get_bot_settings()
+        
+        user_profile = {
+            'name': user.name,
+            'age': user.age,
+            'gender': user.gender,
+            'emotion_tags': user.emotion_tags or [],
+            'topic_tags': user.topic_tags or []
+        }
+        
+        # Use special continue prompt
+        continue_prompt = settings_dict.get('continue_prompt', 
+            "Продолжи мысль, дай развернутый совет или поддержку. Будь эмпатичным и полезным.")
+        
+        gpt_response = await gpt_service.generate_continue_response(
+            user_profile,
+            history,
+            settings_dict,
+            continue_prompt,
+            bot=message.bot,
+            chat_id=message.chat.id
+        )
+        
+        # Handle crisis if detected
+        if gpt_response['is_crisis']:
+            from .dialog import handle_crisis_response
+            await handle_crisis_response(message, user, user_service, conv_service, conversation)
+            return
+        
+        # Consume daily message
+        await conv_service.consume_daily_message(user)
+        
+        # Add continue message to conversation
+        await conv_service.add_message(
+            conversation, 
+            "assistant", 
+            gpt_response['response'],
+            gpt_response['token_count']
+        )
+        
+        # Send response
+        from services.rhythm_service import RhythmService
+        rhythm_service = RhythmService()
+        await rhythm_service.send_blocks_with_rhythm(
+            message, 
+            gpt_response['blocks'], 
+            user.id,
+            settings_dict
+        )
+        
+        # Log event
+        await user_service.log_event(
+            user.id,
+            "continue_message",
+            {'token_count': gpt_response['token_count']}
+        )
+
+
+async def new_theme_handler(message: types.Message):
+    """Handle new theme button - start fresh conversation"""
+    telegram_id = str(message.from_user.id)
+    
+    async with async_session() as session:
+        user_service = UserService(session)
+        conv_service = ConversationService(session)
+        
+        user = await user_service.get_or_create_user(telegram_id)
+        
+        # Check onboarding
+        if not user.terms_accepted or not user.name:
+            await message.answer("Пожалуйста, сначала завершите регистрацию: /start")
+            return
+        
+        # Immediately show feedback
+        await message.answer("🔄 Начинаем новую тему...")
+        
+        # Close current conversation and create new one (optimized)
+        await conv_service.close_active_conversation(user)
+        new_conversation = await conv_service.get_or_create_active_conversation(user)
+        
+        # Log event
+        await user_service.log_event(user.id, "new_theme_started")
+        
+        # Quick response
+        welcome_text = f"✨ <b>Новая тема начата!</b>\n\n{user.name}, о чем хотели бы поговорить?"
+        await message.answer(welcome_text, parse_mode="HTML")
 
 
 async def help_handler(message: types.Message):
@@ -369,7 +509,12 @@ Veloxe — это эмпатичный бот для эмоциональной 
 **Поддержка:**
 По вопросам пишите @support"""
     
-    await message.answer(help_text, parse_mode="Markdown")
+    # Add cancel button to help message
+    help_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_message")]
+    ])
+    
+    await message.answer(help_text, reply_markup=help_keyboard, parse_mode="Markdown")
 
 
 def register_profile_handlers(dp: Dispatcher):
@@ -381,6 +526,8 @@ def register_profile_handlers(dp: Dispatcher):
     dp.message.register(profile_handler, F.text == "🙋 Мой профиль")
     dp.message.register(subscription_menu_handler, F.text == "💳 Подписка")
     dp.message.register(help_handler, F.text == "ℹ️ Помощь")
+    dp.message.register(continue_handler, F.text == "💭 Продолжить")
+    dp.message.register(new_theme_handler, F.text == "🔄 Новая тема")
     
     # Profile callback handlers
     dp.callback_query.register(profile_edit_handler, F.data == "profile_edit")
@@ -389,6 +536,7 @@ def register_profile_handlers(dp: Dispatcher):
     dp.callback_query.register(confirm_delete_data_handler, F.data == "confirm_delete_data")
     dp.callback_query.register(profile_delete_profile_handler, F.data == "profile_delete_profile")
     dp.callback_query.register(back_to_profile_handler, F.data == "back_to_profile")
+    # cancel_message_handler is universal in dialog.py
     
     # Delete confirmation handler
     dp.message.register(handle_delete_confirmation, ProfileStates.waiting_delete_confirmation)

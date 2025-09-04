@@ -11,7 +11,7 @@ from shared.config.settings import settings
 from shared.config.database import init_db
 from shared.config.redis import init_redis
 from handlers import register_handlers
-from middlewares import ConsentMiddleware, CrisisMiddleware
+from middlewares import ConsentMiddleware, CrisisMiddleware, SurveyMiddleware
 from services.admin_settings_service import AdminSettingsService
 from services.ping_service import PingService
 from services.subscription_reminder_service import SubscriptionReminderService
@@ -101,6 +101,8 @@ async def main():
     # Register middlewares
     dp.message.middleware(ConsentMiddleware())
     dp.callback_query.middleware(ConsentMiddleware())
+    dp.message.middleware(SurveyMiddleware())
+    dp.callback_query.middleware(SurveyMiddleware())
     dp.message.middleware(CrisisMiddleware())
     dp.callback_query.middleware(CrisisMiddleware())
     logger.info("Middlewares registered")

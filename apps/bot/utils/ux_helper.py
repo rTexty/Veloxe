@@ -12,7 +12,7 @@ class UXHelper:
     """Утилиты для красивого и плавного UX в боте"""
     
     @staticmethod
-    async def typing_action(chat_id: int, bot, duration: float = 1.5):
+    async def typing_action(chat_id: int, bot, duration: float = 0.2):
         """Показать индикатор печати"""
         try:
             await bot.send_chat_action(chat_id, "typing")
@@ -25,7 +25,7 @@ class UXHelper:
         message: types.Message,
         new_text: str,
         reply_markup: Optional[InlineKeyboardMarkup] = None,
-        typing_delay: float = 0.8,
+        typing_delay: float = 0.3,
         parse_mode: Optional[str] = "HTML"
     ):
         """Плавно редактировать сообщение с индикатором печати"""
@@ -52,7 +52,7 @@ class UXHelper:
         message: types.Message,
         text: str,
         reply_markup: Optional[InlineKeyboardMarkup] = None,
-        typing_delay: float = 1.2,
+        typing_delay: float = 0.3,
         parse_mode: Optional[str] = "HTML"
     ):
         """Отправить сообщение с индикатором печати"""
@@ -180,7 +180,7 @@ class OnboardingUX:
                     welcome_steps = [
                         custom_greeting,
                         f"🌟 Добро пожаловать в безопасное пространство",
-                        f"🛡️ Всё конфиденциально и анонимно"
+                        # f"🛡️ Всё конфиденциально и анонимно"  # ВРЕМЕННО ОТКЛЮЧЕНО
                     ]
                 except Exception as e:
                     print(f"Failed to generate greeting: {e}")
@@ -188,14 +188,14 @@ class OnboardingUX:
                     welcome_steps = [
                         f"👋 Привет, {user_name}!",
                         f"🌟 Добро пожаловать в безопасное пространство",
-                        f"🛡️ Всё конфиденциально и анонимно"
+                        # f"🛡️ Всё конфиденциально и анонимно"  # ВРЕМЕННО ОТКЛЮЧЕНО
                     ]
             else:
                 # Static greeting when disabled
                 welcome_steps = [
                     f"👋 Привет, {user_name}!",
                     f"🌟 Добро пожаловать в безопасное пространство",
-                    f"🛡️ Всё конфиденциально и анонимно"
+                    # f"🛡️ Всё конфиденциально и анонимно"  # ВРЕМЕННО ОТКЛЮЧЕНО
                 ]
         
         final_text = f"""🌸 <b>Добро пожаловать, {user_name}!</b>
@@ -213,12 +213,21 @@ class OnboardingUX:
             ("❌ Не готов", "consent_decline")
         ], rows=2)
         
-        await UXHelper.progress_edit(
+        # ВРЕМЕННО ОТКЛЮЧЕНА АНИМАЦИЯ ЗАГРУЗКИ
+        # await UXHelper.progress_edit(
+        #     message,
+        #     welcome_steps,
+        #     final_text,
+        #     keyboard,
+        #     step_delay=1.2
+        # )
+        
+        # Показываем сразу финальный текст без анимации
+        await UXHelper.smooth_edit_text(
             message,
-            welcome_steps,
             final_text,
             keyboard,
-            step_delay=1.2
+            typing_delay=0.8
         )
     
     @staticmethod

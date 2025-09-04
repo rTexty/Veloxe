@@ -104,7 +104,7 @@ class SubscriptionReminderService:
                 user.telegram_id,
                 reminder_text,
                 reply_markup=keyboard,
-                typing_delay=1.0
+                typing_delay=0.3
             )
             
             # Update reminder timestamp
@@ -153,7 +153,7 @@ class SubscriptionReminderService:
                 user.telegram_id,
                 reminder_text,
                 reply_markup=keyboard,
-                typing_delay=0.8
+                typing_delay=0.3
             )
             
             # Update reminder timestamp

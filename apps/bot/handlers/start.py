@@ -40,12 +40,12 @@ async def start_handler(message: types.Message):
             welcome_msg = await UXHelper.smooth_answer(
                 message, 
                 welcome_text, 
-                typing_delay=1.0,
+                typing_delay=0.3,
                 parse_mode="HTML"
             )
             
             # Small delay before showing consent
-            await asyncio.sleep(2.0)
+            await asyncio.sleep(1.5)
             
             # Prepare user profile for greeting generation
             user_profile = {
@@ -107,7 +107,7 @@ async def start_handler(message: types.Message):
                     message, 
                     welcome_back_text, 
                     reply_markup=main_menu,
-                    typing_delay=1.0
+                    typing_delay=0.4
                 )
 
 

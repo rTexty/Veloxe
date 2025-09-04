@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc, and_
+from sqlalchemy import select, func, desc, and_, or_, delete, text
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timedelta
@@ -120,49 +120,67 @@ async def get_users(
 ):
     """Get paginated list of users"""
     
-    # Get users first, then we'll get their latest subscription separately
-    query = select(User)
-    
-    if active_only:
-        query = query.where(User.is_active == True)
-    
-    if search:
-        query = query.where(
-            func.or_(
-                User.name.ilike(f"%{search}%"),
-                User.telegram_id.ilike(f"%{search}%"),
-                User.city.ilike(f"%{search}%")
+    try:
+        # Build query with filters
+        query = select(User)
+        
+        if active_only:
+            query = query.where(User.is_active == True)
+        
+        if search:
+            query = query.where(
+                or_(
+                    User.name.ilike(f"%{search}%"),
+                    User.telegram_id.ilike(f"%{search}%"),
+                    User.city.ilike(f"%{search}%")
+                )
             )
-        )
-    
-    query = query.order_by(desc(User.created_at))
-    query = query.offset((page - 1) * size).limit(size)
-    
-    result = await db.execute(query)
-    user_list = result.scalars().all()
-    
-    users = []
-    for user in user_list:
-        user_response = UserResponse.model_validate(user)
         
-        # Get latest subscription for this user (matching bot logic)
-        subscription_result = await db.execute(
-            select(Subscription)
-            .where(Subscription.user_id == user.id)
-            .order_by(desc(Subscription.created_at))
-        )
-        subscription = subscription_result.scalar_one_or_none()
+        query = query.order_by(desc(User.created_at))
+        query = query.offset((page - 1) * size).limit(size)
         
-        if subscription:
-            user_response.subscription_active = subscription.is_active and subscription.ends_at > datetime.utcnow()
-            user_response.subscription_plan = subscription.plan_name
-            user_response.subscription_ends_at = subscription.ends_at
-            user_response.daily_messages_used = subscription.daily_messages_used
-            user_response.daily_messages_limit = subscription.daily_messages_limit
+        result = await db.execute(query)
+        user_list = result.scalars().all()
         
-        users.append(user_response)
-    
-    return users
+        users = []
+        for user in user_list:
+            # Create UserResponse manually 
+            user_response = UserResponse(
+                id=user.id,
+                telegram_id=user.telegram_id,
+                name=user.name,
+                age=user.age,
+                gender=user.gender,
+                city=user.city,
+                timezone=user.timezone,
+                terms_accepted=user.terms_accepted,
+                is_active=user.is_active,
+                is_in_crisis=user.is_in_crisis,
+                created_at=user.created_at
+            )
+            
+            # Get latest subscription for this user
+            subscription_result = await db.execute(
+                select(Subscription)
+                .where(Subscription.user_id == user.id)
+                .order_by(desc(Subscription.created_at))
+                .limit(1)
+            )
+            subscription = subscription_result.scalars().first()
+            
+            if subscription:
+                user_response.subscription_active = subscription.is_active and subscription.ends_at > datetime.utcnow()
+                user_response.subscription_plan = subscription.plan_name
+                user_response.subscription_ends_at = subscription.ends_at
+                user_response.daily_messages_used = subscription.daily_messages_used
+                user_response.daily_messages_limit = subscription.daily_messages_limit
+            
+            users.append(user_response)
+        
+        return users
+    except Exception as e:
+        print(f"Error in get_users: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{user_id}", response_model=UserResponse)
@@ -240,7 +258,7 @@ async def toggle_user_active(user_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.patch("/{user_id}/subscription")
 async def toggle_user_subscription(user_id: int, db: AsyncSession = Depends(get_db)):
-    """Toggle user subscription status"""
+    """Toggle user subscription status - отключить подписку"""
     
     result = await db.execute(
         select(User, Subscription).outerjoin(
@@ -294,3 +312,81 @@ async def toggle_user_subscription(user_id: int, db: AsyncSession = Depends(get_
         "message": message,
         "subscription_active": active
     }
+
+
+@router.delete("/{user_id}")
+async def delete_user(user_id: int, db: AsyncSession = Depends(get_db)):
+    """Delete user and all related data"""
+    
+    # Check if user exists
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    try:
+        # Manual deletion in correct order to handle FK constraints
+        from shared.models.subscription import Subscription
+        from shared.models.conversation import Conversation, Message
+        from shared.models.analytics import Event
+        from shared.models.crisis import CrisisEvent
+        
+        # 1. Delete analytics events  
+        try:
+            await db.execute(delete(Event).where(Event.user_id == user_id))
+        except Exception:
+            # Try alternative table name
+            await db.execute(text(f"DELETE FROM analytics_events WHERE user_id = {user_id}"))
+        
+        # 2. Delete crisis events  
+        await db.execute(delete(CrisisEvent).where(CrisisEvent.user_id == user_id))
+        
+        # 3. Delete conversation messages first, then conversations
+        conversations_result = await db.execute(
+            select(Conversation.id).where(Conversation.user_id == user_id)
+        )
+        conversation_ids = [row[0] for row in conversations_result.fetchall()]
+        
+        for conv_id in conversation_ids:
+            # Delete conversation summaries first
+            await db.execute(text(f"DELETE FROM conversation_summaries WHERE conversation_id = {conv_id}"))
+            # Delete messages
+            await db.execute(delete(Message).where(Message.conversation_id == conv_id))
+        
+        await db.execute(delete(Conversation).where(Conversation.user_id == user_id))
+        
+        # 4. Delete subscriptions
+        await db.execute(delete(Subscription).where(Subscription.user_id == user_id))
+        
+        # 5. Delete memory anchors if exist
+        try:
+            from shared.models.memory import MemoryAnchor
+            await db.execute(delete(MemoryAnchor).where(MemoryAnchor.user_id == user_id))
+        except ImportError:
+            pass  # Model might not exist
+        
+        # 6. Delete user sessions if exist
+        try:
+            from shared.models.user_session import UserSession
+            await db.execute(delete(UserSession).where(UserSession.user_id == user_id))
+        except ImportError:
+            pass  # Model might not exist
+        
+        # 7. Finally delete the user
+        await db.execute(delete(User).where(User.id == user_id))
+        
+        await db.commit()
+        
+        return {
+            "message": f"User {user.name or user.telegram_id} deleted successfully",
+            "deleted_user_id": user_id
+        }
+        
+    except Exception as e:
+        await db.rollback()
+        print(f"Error deleting user {user_id}: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to delete user: {str(e)}"
+        )

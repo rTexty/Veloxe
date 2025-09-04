@@ -339,6 +339,14 @@ class AdminSettingsService:
             "Welcome message shown to new users on first /start"
         )
         
+        # Continue button prompt
+        await self._set_if_not_exists(
+            "continue_prompt",
+            "Продолжи мысль, дай развернутый совет или поддержку. Будь эмпатичным и полезным. Не повторяйся, добавь что-то новое к разговору.",
+            "frequent",
+            "Prompt used when user clicks 'Continue' button"
+        )
+        
         # Analytics settings
         await self._set_if_not_exists("analytics_retention_days", 90, "expert", "Days to keep analytics data")
         await self._set_if_not_exists("log_user_messages", False, "expert", "Whether to log user message content (GDPR sensitive)")

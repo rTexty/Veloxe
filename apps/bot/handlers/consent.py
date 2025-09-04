@@ -33,7 +33,7 @@ async def consent_accept_handler(callback: types.CallbackQuery):
         await UXHelper.smooth_edit_text(
             callback.message,
             "✨ Отлично! Подготавливаю знакомство...",
-            typing_delay=1.0
+            typing_delay=0.3
         )
         
         # Start beautiful survey flow
@@ -46,7 +46,7 @@ async def consent_decline_handler(callback: types.CallbackQuery):
     await UXHelper.smooth_edit_text(
         callback.message,
         decline_text,
-        typing_delay=0.8
+        typing_delay=0.3
     )
 
 
@@ -60,25 +60,53 @@ async def show_full_policy_handler(callback: types.CallbackQuery):
         )
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⬅️ К началу", callback_data="back_to_consent")]
+        [InlineKeyboardButton(text="⬅️ К началу", callback_data="back_to_consent")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_message")]
     ])
     
     await UXHelper.smooth_edit_text(
         callback.message,
         full_policy, 
         reply_markup=keyboard,
-        typing_delay=0.6
+        typing_delay=0.2
     )
 
 
 async def back_to_consent_handler(callback: types.CallbackQuery):
     user_name = callback.from_user.first_name or "друг"
     
-    # Return to animated welcome
-    await OnboardingUX.animated_welcome(callback.message, user_name)
+    # ИСПРАВЛЕНО: Убрана долгая анимация, показываем сразу финальный текст
+    final_text = f"""🌸 <b>Добро пожаловать, {user_name}!</b>
+
+Ты в безопасном пространстве для души. Здесь можно:
+• 💬 Поделиться переживаниями  
+• 🧘‍♀️ Найти покой и поддержку
+• 📈 Отследить своё эмоциональное состояние
+
+⚠️ <i>Это не замена психотерапии. В кризисных ситуациях звони 112.</i>"""
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Я согласен продолжить", callback_data="consent_accept"),
+            InlineKeyboardButton(text="📋 Условия использования", callback_data="show_full_policy")
+        ],
+        [
+            InlineKeyboardButton(text="❌ Не готов", callback_data="consent_decline")
+        ]
+    ])
+    
+    await UXHelper.smooth_edit_text(
+        callback.message,
+        final_text,
+        keyboard,
+        typing_delay=0.2
+    )
 
 
 # Function removed - now handled in OnboardingUX.survey_intro_animation
+
+
+# cancel_message_handler is now universal in dialog.py
 
 
 def register_consent_handlers(dp: Dispatcher):
@@ -86,3 +114,4 @@ def register_consent_handlers(dp: Dispatcher):
     dp.callback_query.register(consent_decline_handler, F.data == "consent_decline")
     dp.callback_query.register(show_full_policy_handler, F.data == "show_full_policy")
     dp.callback_query.register(back_to_consent_handler, F.data == "back_to_consent")
+    # cancel_message_handler is universal in dialog.py

@@ -55,13 +55,14 @@ class GreetingService:
             # Generate greeting with GPT
             try:
                 response = await self.client.chat.completions.create(
-                    model="gpt-4",
+                    model="gpt-3.5-turbo",  # Much faster than GPT-4
                     messages=[
                         {"role": "system", "content": greeting_prompt},
                         {"role": "user", "content": context}
                     ],
-                    max_tokens=200,
-                    temperature=0.9,  # High creativity for variety
+                    max_tokens=100,  # Reduced for greetings
+                    temperature=0.9,
+                    timeout=6.0  # 6 second timeout for greetings
                 )
                 
                 greeting = response.choices[0].message.content.strip()
@@ -196,27 +197,32 @@ class GreetingService:
         name = user_profile.get('name', 'друг')
         
         # Get fallback templates from settings
-        fallback_templates = await settings_service.get_setting(
+        default_templates = await settings_service.get_setting(
             "greeting_fallback_templates",
             [
-                f"Привет, {name}! Как дела? 😊",
-                f"Здравствуй, {name}! Рад тебя видеть 🌸",
-                f"Привет! Как настроение, {name}? 💭",
-                f"Добро пожаловать, {name}! Что у тебя на душе? ✨",
+                "Привет, {name}! Как дела? 😊",
+                "Здравствуй, {name}! Рад тебя видеть 🌸",
+                "Привет! Как настроение, {name}? 💭",
+                "Добро пожаловать, {name}! Что у тебя на душе? ✨",
             ]
         )
         
+        # Format templates with actual name
+        fallback_templates = [template.format(name=name) for template in default_templates]
+        
         # Add scenario-specific templates
         if scenario == 'first_time':
-            fallback_templates.extend([
-                f"Привет, {name}! Приятно познакомиться 🌟",
-                f"Здравствуй! Меня зовут... а как тебя? Ой, {name}! Красивое имя 😊"
-            ])
+            scenario_templates = [
+                "Привет, {name}! Приятно познакомиться 🌟",
+                "Здравствуй! Меня зовут... а как тебя? Ой, {name}! Красивое имя 😊"
+            ]
+            fallback_templates.extend([template.format(name=name) for template in scenario_templates])
         elif scenario == 'return_user':
-            fallback_templates.extend([
-                f"С возвращением, {name}! Соскучился 💙",
-                f"Привет снова, {name}! Как прошло время? 🌈"
-            ])
+            scenario_templates = [
+                "С возвращением, {name}! Соскучился 💙",
+                "Привет снова, {name}! Как прошло время? 🌈"
+            ]
+            fallback_templates.extend([template.format(name=name) for template in scenario_templates])
         
         return random.choice(fallback_templates)
     

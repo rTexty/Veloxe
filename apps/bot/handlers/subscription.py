@@ -41,7 +41,8 @@ async def show_subscription_handler(callback: types.CallbackQuery):
         ])
     
     keyboard_rows.append([
-        InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_dialog")
+        InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_dialog"),
+        InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_message")
     ])
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
@@ -132,7 +133,7 @@ async def pay_card_handler(callback: types.CallbackQuery):
     await UXHelper.smooth_edit_text(
         callback.message,
         "₿ Создаем ссылку для оплаты криптовалютой...",
-        typing_delay=1.0
+        typing_delay=0.3
     )
     
     payment_service = PaymentService()
@@ -294,7 +295,7 @@ async def successful_payment_handler(message: types.Message):
             await UXHelper.smooth_answer(
                 message,
                 "✅ Оплата прошла успешно!\n\nВаша подписка активирована. Теперь у вас безлимитное общение с ботом. Приятного использования! 🎉",
-                typing_delay=1.0
+                typing_delay=0.3
             )
         else:
             await UXHelper.smooth_answer(
@@ -311,6 +312,9 @@ async def successful_payment_handler(message: types.Message):
         )
 
 
+# cancel_message_handler is now universal in dialog.py
+
+
 def register_subscription_handlers(dp: Dispatcher):
     dp.callback_query.register(show_subscription_handler, F.data == "show_subscription")
     dp.callback_query.register(select_plan_handler, F.data.startswith("select_plan_"))
@@ -318,6 +322,7 @@ def register_subscription_handlers(dp: Dispatcher):
     dp.callback_query.register(pay_card_handler, F.data.startswith("pay_card_"))
     dp.callback_query.register(back_to_dialog_handler, F.data == "back_to_dialog")
     dp.callback_query.register(remind_later_handler, F.data == "remind_later")
+    # cancel_message_handler is universal in dialog.py
     
     # Payment handlers
     dp.pre_checkout_query.register(pre_checkout_handler)

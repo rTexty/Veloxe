@@ -73,8 +73,9 @@ class GPTService:
                 response = await self.client.chat.completions.create(
                     model="gpt-3.5-turbo",
                     messages=messages,
-                    max_tokens=1000,  # Restored full response length
-                    temperature=0.8
+                    max_tokens=400,  # Reduced for faster responses
+                    temperature=0.8,
+                    timeout=10.0  # 10 second timeout
                 )
             finally:
                 # Stop typing indicator
@@ -251,3 +252,99 @@ class GPTService:
         except Exception:
             # Ignore typing errors
             pass
+    
+    async def generate_continue_response(
+        self, 
+        user_profile: Dict, 
+        conversation_history: List[Dict],
+        settings_dict: Dict,
+        continue_prompt: str,
+        bot=None,
+        chat_id=None
+    ) -> Dict:
+        """
+        Generate continue response without new user input
+        """
+        
+        # Build system prompt
+        system_prompt = await self._build_system_prompt(user_profile, settings_dict)
+        
+        # Build messages for GPT
+        messages = [{"role": "system", "content": system_prompt}]
+        
+        # Add conversation history 
+        memory_window = settings_dict.get('memory_window_size', 10)
+        recent_history = conversation_history[-memory_window:] if conversation_history else []
+        
+        for msg in recent_history:
+            messages.append({
+                "role": msg['role'],
+                "content": msg['content']
+            })
+        
+        # Add continue instruction
+        messages.append({
+            "role": "user", 
+            "content": continue_prompt
+        })
+        
+        try:
+            # Start typing indicator
+            typing_task = None
+            if bot and chat_id:
+                typing_task = asyncio.create_task(self._maintain_typing(bot, chat_id))
+            
+            try:
+                # Call OpenAI API with shorter response
+                response = await self.client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=messages,
+                    max_tokens=300,  # Shorter for continue responses
+                    temperature=0.7,
+                    timeout=8.0  # 8 second timeout for continue responses
+                )
+            finally:
+                # Stop typing indicator
+                if typing_task:
+                    typing_task.cancel()
+                    try:
+                        await typing_task
+                    except asyncio.CancelledError:
+                        pass
+            
+            response_text = response.choices[0].message.content
+            token_count = response.usage.total_tokens
+            
+            # Check for crisis in continue response
+            is_crisis = await self._detect_crisis(response_text, settings_dict)
+            
+            if is_crisis:
+                crisis_response = await self._get_crisis_response(settings_dict)
+                return {
+                    'response': crisis_response,
+                    'is_crisis': True,
+                    'blocks': [crisis_response],
+                    'token_count': 0
+                }
+            
+            # Process response into blocks (limit to 2 for continue)
+            blocks = self._process_response_blocks(response_text, settings_dict)
+            if len(blocks) > 2:
+                blocks = blocks[:2]
+            
+            return {
+                'response': response_text,
+                'is_crisis': False,
+                'blocks': blocks,
+                'token_count': token_count
+            }
+            
+        except Exception as e:
+            # Fallback response for continue
+            return {
+                'response': "Хм, дай мне секунду собраться с мыслями... Попробуй нажать еще раз!",
+                'is_crisis': False,
+                'blocks': ["Хм, дай мне секунду собраться с мыслями... Попробуй нажать еще раз!"],
+                'token_count': 0,
+                'error': str(e)
+            }

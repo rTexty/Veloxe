@@ -43,7 +43,6 @@ async def menu_handler(message: types.Message):
             return
     
     main_menu = await show_main_menu()
-    await message.answer("🏠 Главное меню:", reply_markup=main_menu)
 
 
 async def handle_unknown_command(message: types.Message):

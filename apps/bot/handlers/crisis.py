@@ -27,7 +27,8 @@ async def show_crisis_help_handler(callback: types.CallbackQuery):
 Если ты в опасности прямо сейчас - звони 112 или обратись к близким людям."""
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Я в безопасности", callback_data="crisis_safe")]
+        [InlineKeyboardButton(text="✅ Я в безопасности", callback_data="crisis_safe")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_message")]
     ])
     
     await callback.message.edit_text(help_text, reply_markup=keyboard)
@@ -90,6 +91,10 @@ async def handle_crisis_resolution(message: types.Message):
     return False
 
 
+# cancel_message_handler is now universal in dialog.py
+
+
 def register_crisis_handlers(dp: Dispatcher):
     dp.callback_query.register(show_crisis_help_handler, F.data == "show_crisis_help")
     dp.callback_query.register(crisis_safe_handler, F.data == "crisis_safe")
+    # cancel_message_handler is universal in dialog.py

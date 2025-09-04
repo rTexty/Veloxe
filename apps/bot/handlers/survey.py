@@ -1,5 +1,5 @@
 from aiogram import Dispatcher, types, F
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, KeyboardButton, ReplyKeyboardMarkup
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 import sys
@@ -16,6 +16,7 @@ class SurveyStates(StatesGroup):
     waiting_age = State()
     waiting_gender = State()
     waiting_city = State()
+    waiting_timezone = State()
     waiting_emotions = State()
     waiting_topics = State()
     confirming = State()
@@ -31,26 +32,59 @@ async def survey_name_handler(callback: types.CallbackQuery, state: FSMContext):
     await UXHelper.smooth_edit_text(
         callback.message,
         question_text,
-        typing_delay=0.8
+        typing_delay=0.3
     )
     await state.set_state(SurveyStates.waiting_name)
 
 
 async def name_input_handler(message: types.Message, state: FSMContext):
-    await state.update_data(name=message.text)
+    import re
+    
+    name = message.text.strip()
+    
+    # Валидация имени - защита от команд и некорректного ввода
+    if not name or len(name) < 1 or len(name) > 30:
+        await UXHelper.smooth_answer(
+            message,
+            "👤 Пожалуйста, укажите ваше имя (1-30 символов)",
+            typing_delay=0.3
+        )
+        return
+    
+    # Проверка на команды бота
+    if name.startswith('/') or name.startswith('@'):
+        await UXHelper.smooth_answer(
+            message,
+            "📝 <b>Давайте сначала завершим анкету!</b>\n\nВы сейчас заполняете профиль. Пожалуйста, ответьте на текущий вопрос или нажмите /start для начала сначала.",
+            typing_delay=0.3
+        )
+        return
+    
+    # Проверка на подозрительные символы
+    if re.search(r'[<>{}[\]()=+*&%$#!^~`|\\]', name):
+        await UXHelper.smooth_answer(
+            message,
+            "👤 Используйте только буквы, цифры, пробелы и базовые знаки",
+            typing_delay=0.3
+        )
+        return
+    
+    await state.update_data(name=name)
     
     keyboard = OnboardingUX.create_button_keyboard([
         ("🎂 Указать возраст", "survey_age"),
         ("⏭️ Пропустить", "survey_gender")
     ])
     
-    response_text = f"🌟 <b>Приятно познакомиться, {message.text}!</b>\n\nПродолжаем знакомство?"
+    # Безопасное отображение имени
+    safe_name = name.replace('<', '&lt;').replace('>', '&gt;')
+    response_text = f"🌟 <b>Приятно познакомиться, {safe_name}!</b>\n\nПродолжаем знакомство?"
     
     await UXHelper.smooth_answer(
         message, 
         response_text, 
         reply_markup=keyboard,
-        typing_delay=1.0
+        typing_delay=0.3
     )
 
 
@@ -64,36 +98,47 @@ async def survey_age_handler(callback: types.CallbackQuery, state: FSMContext):
     await UXHelper.smooth_edit_text(
         callback.message,
         question_text,
-        typing_delay=0.6
+        typing_delay=0.2
     )
     await state.set_state(SurveyStates.waiting_age)
 
 
 async def age_input_handler(message: types.Message, state: FSMContext):
+    user_input = message.text.strip()
+    
+    # Проверка на команды бота
+    if user_input.startswith('/'):
+        await UXHelper.smooth_answer(
+            message,
+            "📝 Сейчас нужно указать ваш возраст цифрами.\nКоманды можно использовать после завершения анкеты.",
+            typing_delay=0.3
+        )
+        return
+    
     try:
-        age = int(message.text)
+        age = int(user_input)
         if 10 <= age <= 120:
             await state.update_data(age=age)
-            await show_gender_selection(message)
+            await show_gender_selection(message, state)
         else:
             await UXHelper.smooth_answer(
                 message,
                 "🤔 Похоже, возраст необычный...\nПопробуйте ещё раз (10-120 лет)",
-                typing_delay=0.5
+                typing_delay=0.3
             )
     except ValueError:
         await UXHelper.smooth_answer(
             message,
             "😅 Пожалуйста, напишите возраст просто цифрами",
-            typing_delay=0.5
+            typing_delay=0.3
         )
 
 
 async def survey_gender_handler(callback: types.CallbackQuery, state: FSMContext):
-    await show_gender_selection(callback.message)
+    await show_gender_selection(callback.message, state)
 
 
-async def show_gender_selection(message: types.Message):
+async def show_gender_selection(message: types.Message, state: FSMContext = None):
     question_text = OnboardingUX.format_survey_question(
         "Как к вам обращаться?",
         3, 6,
@@ -111,8 +156,30 @@ async def show_gender_selection(message: types.Message):
         message, 
         question_text, 
         reply_markup=keyboard,
-        typing_delay=0.8
+        typing_delay=0.3
     )
+    
+    # Устанавливаем правильное состояние
+    if state:
+        await state.set_state(SurveyStates.waiting_gender)
+
+
+async def gender_text_handler(message: types.Message, state: FSMContext):
+    """Обработка текстового ввода во время выбора пола"""
+    user_input = message.text.strip()
+    
+    if user_input.startswith('/'):
+        await UXHelper.smooth_answer(
+            message,
+            "📝 Сейчас нужно выбрать пол кнопками выше.\nКоманды можно использовать после завершения анкеты.",
+            typing_delay=0.3
+        )
+    else:
+        await UXHelper.smooth_answer(
+            message,
+            "🤷 Пожалуйста, выберите пол кнопками выше или нажмите «Пропустить»",
+            typing_delay=0.3
+        )
 
 
 async def gender_handler(callback: types.CallbackQuery, state: FSMContext):
@@ -133,7 +200,7 @@ async def gender_handler(callback: types.CallbackQuery, state: FSMContext):
     await UXHelper.smooth_edit_text(
         callback.message,
         question_text,
-        typing_delay=0.6
+        typing_delay=0.2
     )
     await state.set_state(SurveyStates.waiting_city)
 
@@ -148,35 +215,159 @@ async def survey_city_handler(callback: types.CallbackQuery, state: FSMContext):
     await UXHelper.smooth_edit_text(
         callback.message,
         question_text,
-        typing_delay=0.6
+        typing_delay=0.2
     )
     await state.set_state(SurveyStates.waiting_city)
 
 
 async def city_input_handler(message: types.Message, state: FSMContext):
     from utils.timezone_helper import TimezoneHelper
+    import re
     
     city = message.text.strip()
     
+    # Валидация города - защита от команд и некорректного ввода
+    if not city or len(city) < 2 or len(city) > 50:
+        await UXHelper.smooth_answer(
+            message,
+            "🏙️ Пожалуйста, укажите название города (2-50 символов)",
+            typing_delay=0.3
+        )
+        return
+    
+    # Проверка на команды бота
+    if city.startswith('/') or city.startswith('@'):
+        await UXHelper.smooth_answer(
+            message,
+            "🏙️ Пожалуйста, укажите реальный город, а не команду 😊",
+            typing_delay=0.3
+        )
+        return
+    
+    # Проверка на подозрительные символы
+    if re.search(r'[<>{}[\]()=+*&%$#@!^~`|\\]', city):
+        await UXHelper.smooth_answer(
+            message,
+            "🏙️ Используйте только буквы, цифры, пробелы и дефисы",
+            typing_delay=0.3
+        )
+        return
     # Определяем часовой пояс с помощью улучшенной логики
     timezone = TimezoneHelper.get_timezone_from_city(city)
+    
+    await state.update_data(city=city)
+    
     if not timezone:
-        timezone = "Europe/Moscow"  # Fallback to Moscow
-    
-    await state.update_data(city=city, timezone=timezone)
-    
-    # Transition message
-    transition_text = f"🏙️ <b>{message.text}</b> — красивый город!\n\n⏭️ Переходим к следующему шагу..."
-    transition_msg = await UXHelper.smooth_answer(
-        message, 
-        transition_text,
-        typing_delay=1.0
+        # Показываем выбор часового пояса
+        await show_timezone_selection(message, state)
+    else:
+        # Автоматически определился часовой пояс, переходим дальше
+        await state.update_data(timezone=timezone)
+        
+        # Transition message с безопасным отображением города
+        safe_city = city.replace('<', '&lt;').replace('>', '&gt;')
+        transition_text = f"🏙️ <b>{safe_city}</b> — красивый город!\n\n⏭️ Переходим к следующему шагу..."
+        transition_msg = await UXHelper.smooth_answer(
+            message, 
+            transition_text,
+            typing_delay=0.3
+        )
+        
+        await show_emotions_selection(transition_msg, state)
+
+
+async def show_timezone_selection(message: types.Message, state: FSMContext):
+    """Показать выбор часового пояса"""
+    question_text = OnboardingUX.format_survey_question(
+        "Выберите ваш часовой пояс",
+        4, 6,
+        "Это поможет мне учитывать ваше время 🕐"
     )
     
-    await show_emotions_selection(transition_msg)
+    timezones = [
+        "🇰🇿 МСК-1 (UTC+2)", "🇷🇺 МСК (UTC+3)", "🇷🇺 МСК+1 (UTC+4)",
+        "🇰🇿 МСК+2 (UTC+5)", "🇰🇿 МСК+3 (UTC+6)", "🇷🇺 МСК+4 (UTC+7)",
+        "🇷🇺 МСК+5 (UTC+8)", "🇷🇺 МСК+6 (UTC+9)", "🇷🇺 МСК+7 (UTC+10)",
+        "🇷🇺 МСК+8 (UTC+11)", "🇷🇺 МСК+9 (UTC+12)"
+    ]
+    
+    keyboard = OnboardingUX.create_selection_keyboard(
+        timezones, 
+        "timezone",
+        max_cols=1,  # По одному в строке для удобства
+        done_text="✅ Выбрать",
+        single_choice=True  # Только один выбор
+    )
+    
+    await UXHelper.smooth_edit_text(
+        message,
+        question_text,
+        reply_markup=keyboard,
+        typing_delay=0.3
+    )
+    
+    # Устанавливаем состояние ожидания выбора часового пояса
+    await state.set_state(SurveyStates.waiting_timezone)
 
 
-async def show_emotions_selection(message: types.Message):
+async def timezone_handler(callback: types.CallbackQuery, state: FSMContext):
+    """Обработка выбора часового пояса"""
+    timezone_index = callback.data.replace("timezone_", "")
+    
+    # Маппинг индексов на реальные часовые пояса
+    timezone_map = {
+        "0": "Europe/Kaliningrad",  # UTC+2
+        "1": "Europe/Moscow",       # UTC+3
+        "2": "Europe/Samara",       # UTC+4
+        "3": "Asia/Yekaterinburg",  # UTC+5
+        "4": "Asia/Omsk",           # UTC+6
+        "5": "Asia/Krasnoyarsk",    # UTC+7
+        "6": "Asia/Irkutsk",        # UTC+8
+        "7": "Asia/Yakutsk",        # UTC+9
+        "8": "Asia/Vladivostok",    # UTC+10
+        "9": "Asia/Magadan",        # UTC+11
+        "10": "Asia/Kamchatka"      # UTC+12
+    }
+    
+    selected_timezone = timezone_map.get(timezone_index, "Europe/Moscow")
+    await state.update_data(timezone=selected_timezone)
+    
+    # Получаем данные для отображения города
+    data = await state.get_data()
+    city = data.get('city', 'ваш город')
+    safe_city = city.replace('<', '&lt;').replace('>', '&gt;')
+    
+    # Переходим к эмоциям
+    transition_text = f"🏙️ <b>{safe_city}</b> — красивый город!\n\n⏭️ Переходим к следующему шагу..."
+    await UXHelper.smooth_edit_text(
+        callback.message,
+        transition_text,
+        typing_delay=0.3
+    )
+    
+    await callback.answer("✅ Часовой пояс выбран!")
+    await show_emotions_selection(callback.message, state)
+
+
+async def timezone_text_handler(message: types.Message, state: FSMContext):
+    """Обработка текстового ввода во время выбора часового пояса"""
+    user_input = message.text.strip()
+    
+    if user_input.startswith('/'):
+        await UXHelper.smooth_answer(
+            message,
+            "🕐 Сейчас нужно выбрать часовой пояс кнопками выше.\nКоманды можно использовать после завершения анкеты.",
+            typing_delay=0.3
+        )
+    else:
+        await UXHelper.smooth_answer(
+            message,
+            "🕐 Пожалуйста, выберите часовой пояс кнопками выше",
+            typing_delay=0.3
+        )
+
+
+async def show_emotions_selection(message: types.Message, state: FSMContext = None):
     async with async_session() as session:
         settings_service = SettingsService(session)
         
@@ -202,8 +393,30 @@ async def show_emotions_selection(message: types.Message):
         message,
         question_text,
         reply_markup=keyboard,
-        typing_delay=1.2
+        typing_delay=0.4
     )
+    
+    # Устанавливаем правильное состояние
+    if state:
+        await state.set_state(SurveyStates.waiting_emotions)
+
+
+async def emotions_text_handler(message: types.Message, state: FSMContext):
+    """Обработка текстового ввода во время выбора эмоций"""
+    user_input = message.text.strip()
+    
+    if user_input.startswith('/'):
+        await UXHelper.smooth_answer(
+            message,
+            "💭 Сейчас нужно выбрать эмоции кнопками выше.\nКоманды можно использовать после завершения анкеты.",
+            typing_delay=0.3
+        )
+    else:
+        await UXHelper.smooth_answer(
+            message,
+            "💭 Пожалуйста, выберите эмоции кнопками выше или нажмите «Продолжить»",
+            typing_delay=0.3
+        )
 
 
 async def emotion_handler(callback: types.CallbackQuery, state: FSMContext):
@@ -259,13 +472,13 @@ async def emotions_done_handler(callback: types.CallbackQuery, state: FSMContext
     await UXHelper.smooth_edit_text(
         callback.message,
         transition_text,
-        typing_delay=0.8
+        typing_delay=0.3
     )
     
-    await show_topics_selection(callback.message)
+    await show_topics_selection(callback.message, state)
 
 
-async def show_topics_selection(message: types.Message):
+async def show_topics_selection(message: types.Message, state: FSMContext = None):
     async with async_session() as session:
         settings_service = SettingsService(session)
         
@@ -291,8 +504,30 @@ async def show_topics_selection(message: types.Message):
         message,
         question_text,
         reply_markup=keyboard,
-        typing_delay=1.0
+        typing_delay=0.3
     )
+    
+    # Устанавливаем правильное состояние
+    if state:
+        await state.set_state(SurveyStates.waiting_topics)
+
+
+async def topics_text_handler(message: types.Message, state: FSMContext):
+    """Обработка текстового ввода во время выбора тем"""
+    user_input = message.text.strip()
+    
+    if user_input.startswith('/'):
+        await UXHelper.smooth_answer(
+            message,
+            "💬 Сейчас нужно выбрать темы кнопками выше.\nКоманды можно использовать после завершения анкеты.",
+            typing_delay=0.3
+        )
+    else:
+        await UXHelper.smooth_answer(
+            message,
+            "💬 Пожалуйста, выберите темы кнопками выше или нажмите «Завершить анкету»",
+            typing_delay=0.3
+        )
 
 
 async def topic_handler(callback: types.CallbackQuery, state: FSMContext):
@@ -379,7 +614,7 @@ async def show_confirmation(message: types.Message, state: FSMContext):
         message,
         text,
         reply_markup=keyboard,
-        typing_delay=1.5
+        typing_delay=0.4
     )
 
 
@@ -388,20 +623,27 @@ async def survey_confirm_handler(callback: types.CallbackQuery, state: FSMContex
     user_name = callback.from_user.first_name or "друг"
     data = await state.get_data()
     
-    # Show completion animation
-    completion_steps = [
-        "✨ Сохраняю ваши данные...",
-        "🧠 Настраиваю персонализацию...",
-        "🎯 Готовлю для вас лучший опыт..."
-    ]
+    # ВРЕМЕННО ОТКЛЮЧЕНА АНИМАЦИЯ ЗАГРУЗКИ
+    # completion_steps = [
+    #     "✨ Сохраняю ваши данные...",
+    #     "🧠 Настраиваю персонализацию...",
+    #     "🎯 Готовлю для вас лучший опыт..."
+    # ]
     
     final_text = f"🎉 <b>Добро пожаловать, {data.get('name', user_name)}!</b>\n\nТеперь я знаю вас лучше и смогу:\n• 💬 Понимать ваши эмоции\n• 🎯 Подбирать подходящие советы\n• 🌟 Создать комфортную атмосферу\n\n💭 <b>Расскажите, что у вас на душе?</b>"
     
-    await UXHelper.progress_edit(
+    # await UXHelper.progress_edit(
+    #     callback.message,
+    #     completion_steps,
+    #     final_text,
+    #     step_delay=1.0
+    # )
+    
+    # Показываем сразу финальный текст без анимации
+    await UXHelper.smooth_edit_text(
         callback.message,
-        completion_steps,
         final_text,
-        step_delay=1.0
+        typing_delay=0.3
     )
     
     async with async_session() as session:
@@ -431,12 +673,13 @@ async def survey_confirm_handler(callback: types.CallbackQuery, state: FSMContex
         callback.message,
         "🏠 <b>Главное меню:</b>",
         reply_markup=main_menu,
-        typing_delay=1.5
+        typing_delay=0.4
     )
     await state.clear()
 
 
 def register_survey_handlers(dp: Dispatcher):
+    dp.callback_query.register(survey_name_handler, F.data == "start_onboarding")
     dp.callback_query.register(survey_name_handler, F.data == "survey_name")
     dp.message.register(name_input_handler, SurveyStates.waiting_name)
     
@@ -445,14 +688,20 @@ def register_survey_handlers(dp: Dispatcher):
     
     dp.callback_query.register(survey_gender_handler, F.data == "survey_gender")
     dp.callback_query.register(gender_handler, F.data.startswith("gender_"))
+    dp.message.register(gender_text_handler, SurveyStates.waiting_gender)
     
     dp.callback_query.register(survey_city_handler, F.data == "survey_city")
     dp.message.register(city_input_handler, SurveyStates.waiting_city)
     
+    dp.callback_query.register(timezone_handler, F.data.startswith("timezone_"))
+    dp.message.register(timezone_text_handler, SurveyStates.waiting_timezone)
+    
     dp.callback_query.register(emotion_handler, F.data.startswith("emotion_") & ~F.data.endswith("_done"))
     dp.callback_query.register(emotions_done_handler, F.data == "emotion_done")
+    dp.message.register(emotions_text_handler, SurveyStates.waiting_emotions)
     
     dp.callback_query.register(topic_handler, F.data.startswith("topic_") & ~F.data.endswith("_done"))
     dp.callback_query.register(topics_done_handler, F.data == "topic_done")
+    dp.message.register(topics_text_handler, SurveyStates.waiting_topics)
     
     dp.callback_query.register(survey_confirm_handler, F.data == "survey_confirm")

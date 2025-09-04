@@ -105,7 +105,7 @@ class PaymentRetryService:
                 user_id,
                 retry_text,
                 reply_markup=keyboard,
-                typing_delay=0.8
+                typing_delay=0.3
             )
             
             logger.info(f"Sent retry message to user {user_id}, attempt {attempt}")
@@ -143,7 +143,7 @@ class PaymentRetryService:
                 user_id,
                 message_text,
                 reply_markup=keyboard,
-                typing_delay=1.2
+                typing_delay=0.4
             )
             
             # Log max attempts reached

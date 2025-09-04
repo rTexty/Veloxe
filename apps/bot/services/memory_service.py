@@ -55,10 +55,11 @@ class MemoryService:
 
         try:
             response = await self.gpt.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-3.5-turbo",  # Faster than GPT-4
                 messages=[{"role": "user", "content": summary_prompt}],
-                max_tokens=800,
-                temperature=0.3
+                max_tokens=400,  # Reduced for summaries
+                temperature=0.3,
+                timeout=8.0  # 8 second timeout
             )
             
             import json

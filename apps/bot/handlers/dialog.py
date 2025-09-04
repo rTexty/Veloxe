@@ -36,7 +36,7 @@ async def dialog_message_handler(message: types.Message):
                 message, 
                 onboarding_text, 
                 reply_markup=keyboard,
-                typing_delay=0.8
+                typing_delay=0.2
             )
             return
         
@@ -198,7 +198,7 @@ async def show_paywall(message: types.Message, limit_check: dict):
         message, 
         text, 
         reply_markup=keyboard,
-        typing_delay=1.0
+        typing_delay=0.3
     )
 
 
@@ -246,13 +246,39 @@ async def handle_crisis_response(message, user, user_service, conv_service, conv
         message, 
         crisis_text, 
         reply_markup=keyboard,
-        typing_delay=1.5
+        typing_delay=0.4
     )
 
 
 # Button handlers removed for cleaner conversation flow
 
 
+async def cancel_message_handler(callback: types.CallbackQuery):
+    """Universal cancel handler - delete current message and user's command"""
+    try:
+        current_message_id = callback.message.message_id
+        chat_id = callback.message.chat.id
+        
+        # Delete bot's response message
+        await callback.message.delete()
+        
+        # Try to delete user's command message (usually previous message)
+        try:
+            await callback.bot.delete_message(chat_id, current_message_id - 1)
+        except Exception:
+            # User's message might be too old or already deleted
+            pass
+            
+        await callback.answer("Сообщения удалены", show_alert=False)
+    except Exception:
+        # If can't delete (message too old), just edit it
+        await callback.message.edit_text("❌ Отменено")
+        await callback.answer("Отменено")
+
+
 def register_dialog_handlers(dp: Dispatcher):
+    # Universal cancel handler (high priority)
+    dp.callback_query.register(cancel_message_handler, F.data == "cancel_message")
+    
     # Regular message handler (lowest priority)
     dp.message.register(dialog_message_handler, F.text)
