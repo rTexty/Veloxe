@@ -9,7 +9,13 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '../../../'))
 
 from shared.config.database import get_db
 from shared.config.settings import settings
-from routers import settings_router, users_router, analytics_router, system_router, prompt_router, payments_router
+
+# Import routers with absolute path to work in both dev and Docker
+try:
+    from .routers import settings_router, users_router, analytics_router, system_router, prompt_router, payments_router
+except ImportError:
+    # Fallback for Docker environment
+    from apps.admin.backend.routers import settings_router, users_router, analytics_router, system_router, prompt_router, payments_router
 
 app = FastAPI(
     title="Veloxe Admin Panel API",
