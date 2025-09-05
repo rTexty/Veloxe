@@ -68,7 +68,10 @@ const settingTranslations: { [key: string]: string } = {
   'support_contact': 'Контакт поддержки',
   'idle_ping_delay': 'Задержка внутрисессионного пинга (минуты)',
   'session_close_timeout': 'Таймаут закрытия сессии (часы)',
-  'idle_ping_templates': 'Шаблоны внутрисессионных пингов'
+  'idle_ping_templates': 'Шаблоны внутрисессионных пингов',
+  'progressive_ping_1_templates': 'Шаблоны 1-го пинга (через 30 мин)',
+  'progressive_ping_2_templates': 'Шаблоны 2-го пинга (через 2 часа)',
+  'progressive_ping_3_templates': 'Шаблоны 3-го пинга (через 24 часа)'
 };
 
 // Функция для получения русского названия настройки
@@ -101,7 +104,7 @@ const settingTabs = {
   pings: {
     title: '🔔 Пинги (Уведомления)',
     description: 'Настройки проактивных уведомлений от бота',
-    settings: ['ping_enabled', 'ping_templates', 'ping_frequency_hours', 'allowed_ping_hours_start', 'allowed_ping_hours_end', 'idle_ping_delay', 'idle_ping_templates']
+    settings: ['ping_enabled', 'ping_templates', 'ping_frequency_hours', 'allowed_ping_hours_start', 'allowed_ping_hours_end', 'idle_ping_delay', 'idle_ping_templates', 'progressive_ping_1_templates', 'progressive_ping_2_templates', 'progressive_ping_3_templates']
   },
   expert: {
     title: '🛠️ Экспертные настройки',
@@ -660,7 +663,10 @@ export default function Settings() {
       const jsonValue = Array.isArray(value) ? value : [];
       
       if (setting.key === 'emotion_tags' || setting.key === 'topic_tags' || 
-          setting.key === 'crisis_keywords' || setting.key === 'ping_templates') {
+          setting.key === 'crisis_keywords' || setting.key === 'ping_templates' ||
+          setting.key === 'progressive_ping_1_templates' || setting.key === 'progressive_ping_2_templates' ||
+          setting.key === 'progressive_ping_3_templates' || setting.key === 'greeting_fallback_templates' ||
+          setting.key === 'idle_ping_templates') {
         return (
           <div className="space-y-2">
             <div className="flex flex-wrap gap-2 mb-2">

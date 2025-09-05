@@ -94,43 +94,77 @@ class PingService:
             )
             last_ping = last_ping_event.scalar_one_or_none()
             
-            # 1) Внутрисессионный пинг (если молчание > idle_ping_delay минут)
-            if time_since_last >= timedelta(minutes=idle_ping_delay_min):
-                # Проверяем активную сессию
-                active_conversation = await session.execute(
-                    select(Conversation)
-                    .where(
-                        and_(
-                            Conversation.user_id == user.id,
-                            Conversation.is_active == True
-                        )
-                    )
-                    .order_by(Conversation.created_at.desc())
-                    .limit(1)
+            # Прогрессивная система пингов
+            return await self._calculate_progressive_ping(
+                user.id, 
+                last_message_obj.created_at, 
+                last_ping, 
+                now, 
+                session,
+                idle_ping_delay_min
+            )
+        
+        return None
+
+    async def _calculate_progressive_ping(
+        self, 
+        user_id: int, 
+        last_message_time: datetime, 
+        last_ping_event, 
+        now: datetime,
+        session: AsyncSession,
+        idle_ping_delay_min: int
+    ) -> Dict:
+        """
+        Прогрессивная система пингов:
+        1. Через 30 минут после последнего сообщения
+        2. Через 2 часа после первого пинга  
+        3. Через 24 часа после второго пинга
+        """
+        time_since_last_message = now - last_message_time
+        
+        # Считаем количество пингов после последнего сообщения пользователя
+        pings_after_last_message = await session.execute(
+            select(func.count(Event.id))
+            .where(
+                and_(
+                    Event.user_id == user_id,
+                    Event.event_type == 'ping_sent',
+                    Event.created_at > last_message_time
                 )
-                active_conv = active_conversation.scalar_one_or_none()
-                
-                # Если есть активная сессия и не отправляли idle ping в последние 30 мин
-                if active_conv:
-                    if not last_ping or (now - last_ping.created_at) >= timedelta(minutes=idle_ping_delay_min):
-                        return {
-                            'type': 'idle_ping',
-                            'conversation_id': active_conv.id,
-                            'last_activity': last_message_obj.created_at
-                        }
-            
-            # 2) Дневной пинг (если молчание > 24 часов)
-            if time_since_last >= timedelta(hours=ping_frequency_hours):
-                # Проверяем, не отправляли ли уже дневной пинг сегодня
-                today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-                if last_ping and last_ping.created_at >= today_start:
-                    return None  # Уже отправляли сегодня
-                
+            )
+        )
+        ping_count = pings_after_last_message.scalar() or 0
+        
+        # 1-й пинг: через 30 минут после последнего сообщения
+        if ping_count == 0 and time_since_last_message >= timedelta(minutes=idle_ping_delay_min):
+            return {
+                'type': 'progressive_ping_1',
+                'level': 1,
+                'last_activity': last_message_time
+            }
+        
+        # 2-й пинг: через 2 часа после первого пинга
+        if ping_count == 1 and last_ping_event:
+            time_since_first_ping = now - last_ping_event.created_at
+            if time_since_first_ping >= timedelta(hours=2):
                 return {
-                    'type': 'daily_ping',
-                    'last_activity': last_message_obj.created_at
+                    'type': 'progressive_ping_2', 
+                    'level': 2,
+                    'last_activity': last_message_time
                 }
         
+        # 3-й пинг: через 24 часа после второго пинга
+        if ping_count == 2 and last_ping_event:
+            time_since_second_ping = now - last_ping_event.created_at
+            if time_since_second_ping >= timedelta(hours=24):
+                return {
+                    'type': 'progressive_ping_3',
+                    'level': 3, 
+                    'last_activity': last_message_time
+                }
+        
+        # После 3-го пинга больше не отправляем (или можно добавить логику повтора через неделю)
         return None
     
     async def check_session_timeout(self, user: User, settings: Dict) -> bool:
@@ -221,21 +255,44 @@ class PingService:
         Args:
             user: Пользователь
             settings: Настройки
-            ping_type: Тип пинга ('idle_ping' или 'daily_ping')
+            ping_type: Тип пинга ('progressive_ping_1', 'progressive_ping_2', 'progressive_ping_3', 'idle_ping', 'daily_ping')
             
         Returns:
             Текст пинга
         """
-        # Разные шаблоны для разных типов пингов
-        if ping_type == 'idle_ping':
-            idle_templates = [
+        # Прогрессивные пинги с разной интенсивностью
+        if ping_type == 'progressive_ping_1':
+            # Первый пинг - мягкий
+            ping_templates = settings.get('progressive_ping_1_templates', [
                 "Ты ещё здесь? Я на связи 💙",
-                "Как дела? Я слушаю 🤗", 
+                "Как дела, {name}? Я слушаю 🤗", 
                 "Всё в порядке? 💭",
                 "Если нужно поговорить, я здесь ✨"
-            ]
-            ping_templates = settings.get('idle_ping_templates', idle_templates)
-        else:  # daily_ping
+            ])
+        elif ping_type == 'progressive_ping_2':
+            # Второй пинг - более заинтересованный
+            ping_templates = settings.get('progressive_ping_2_templates', [
+                "👋 {name}, думаю о тебе. Как настроение?",
+                "🌟 Хочется узнать, как ты себя чувствуешь?", 
+                "💭 {name}, поделишься, что у тебя на душе?",
+                "🤗 Как прошло время? Расскажешь?"
+            ])
+        elif ping_type == 'progressive_ping_3':
+            # Третий пинг - более настойчивый, заботливый
+            ping_templates = settings.get('progressive_ping_3_templates', [
+                "🌈 {name}, я беспокоюсь. Как ты?",
+                "💙 Давно не слышал от тебя. Всё ли хорошо?", 
+                "☀️ {name}, надеюсь, у тебя все в порядке. Я здесь, если нужно поговорить",
+                "🫂 Скучаю по нашим разговорам. Как дела?"
+            ])
+        elif ping_type == 'idle_ping':
+            # Старый формат для совместимости
+            ping_templates = settings.get('idle_ping_templates', [
+                "Ты ещё здесь? Я на связи 💙",
+                "Как дела? Я слушаю 🤗", 
+                "Всё в порядке? 💭"
+            ])
+        else:  # daily_ping и остальные
             ping_templates = settings.get('ping_templates', [
                 "👋 Привет, {name}! Как дела? Что у тебя на душе?",
                 "🌟 {day_part}, {name}! Думаю о тебе. Как настроение?", 
