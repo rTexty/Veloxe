@@ -164,28 +164,66 @@ class AdminSettingsService:
             "Crisis help contacts shown to users"
         )
         
-        # Ping settings
-        await self._set_if_not_exists("idle_ping_delay", 30, "expert", "Minutes before sending idle ping")
+        # Progressive ping timing settings
+        await self._set_if_not_exists("progressive_ping_1_delay", 30, "frequent", "Minutes before sending first progressive ping")
+        await self._set_if_not_exists("progressive_ping_2_delay", 120, "frequent", "Minutes after first ping to send second ping")
+        await self._set_if_not_exists("progressive_ping_3_delay", 1440, "frequent", "Minutes after second ping to send third ping")
+        
+        # Session settings
         await self._set_if_not_exists("session_close_timeout", 48, "expert", "Hours before closing inactive session")
         await self._set_if_not_exists("allowed_ping_hours_start", 10, "frequent", "Start of allowed ping hours")
         await self._set_if_not_exists("allowed_ping_hours_end", 21, "frequent", "End of allowed ping hours")
         
+        # Legacy idle_ping_delay (mapped to progressive_ping_1_delay for backward compatibility)
+        await self._set_if_not_exists("idle_ping_delay", 30, "expert", "Minutes before sending idle ping (legacy)")
+        
         # Ping system settings
         await self._set_if_not_exists("ping_enabled", True, "frequent", "Enable automatic ping system")
-        await self._set_if_not_exists("ping_frequency_hours", 24, "frequent", "Hours between pings for inactive users")
+        await self._set_if_not_exists("ping_ai_generation_enabled", False, "frequent", "Enable AI generation of ping texts")
         
-        # Ping templates
+        # AI ping generation system prompt
         await self._set_if_not_exists(
-            "ping_templates",
+            "ping_ai_system_prompt",
+            "Ты эмпатичный психологический чат-бот. Создай короткое (до 50 символов), теплое сообщение для проверки связи с пользователем. Используй эмодзи. Варьируй тон от мягкого до заботливого в зависимости от уровня пинга. Не используй вопросы прямо о проблемах, будь деликатным.",
+            "expert",
+            "System prompt for AI-generated ping messages"
+        )
+        
+        # Progressive ping templates
+        await self._set_if_not_exists(
+            "progressive_ping_1_templates",
             [
-                "👋 Привет, {name}! Как дела? Что у тебя на душе?",
-                "🌟 {day_part}, {name}! Думаю о тебе. Как настроение?", 
-                "💭 Хочется узнать, как ты, {name}? Поделишься?",
-                "🌈 Надеюсь, у тебя все хорошо, {name}. Расскажешь, как дела?",
-                "☀️ {day_part}! Как ты себя чувствуешь, {name}?"
+                "Ты ещё здесь? Я на связи 💙",
+                "Как дела, {name}? Я слушаю 🤗", 
+                "Всё в порядке? 💭",
+                "Если нужно поговорить, я здесь ✨"
             ],
             "frequent",
-            "Templates for daily ping messages"
+            "Templates for first progressive ping (level 1)"
+        )
+        
+        await self._set_if_not_exists(
+            "progressive_ping_2_templates",
+            [
+                "👋 {name}, думаю о тебе. Как настроение?",
+                "🌟 Хочется узнать, как ты себя чувствуешь?", 
+                "💭 {name}, поделишься, что у тебя на душе?",
+                "🤗 Как прошло время? Расскажешь?"
+            ],
+            "frequent",
+            "Templates for second progressive ping (level 2)"
+        )
+        
+        await self._set_if_not_exists(
+            "progressive_ping_3_templates",
+            [
+                "🌈 {name}, я беспокоюсь. Как ты?",
+                "💙 Давно не слышал от тебя. Всё ли хорошо?", 
+                "☀️ {name}, надеюсь, у тебя все в порядке. Я здесь, если нужно поговорить",
+                "🫂 Скучаю по нашим разговорам. Как дела?"
+            ],
+            "frequent",
+            "Templates for third progressive ping (level 3)"
         )
         
         # Idle ping templates  

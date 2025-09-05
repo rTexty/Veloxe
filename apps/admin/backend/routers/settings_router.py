@@ -16,6 +16,12 @@ from shared.models.settings import Settings
 from shared.models.prompt_history import PromptHistory
 from sqlalchemy import desc
 
+# Import AI service for ping testing
+try:
+    from apps.bot.services.ping_ai_service import PingAIService
+except ImportError:
+    PingAIService = None
+
 router = APIRouter()
 
 async def save_prompt_to_history(db: AsyncSession, prompt_text: str, changed_by: str = "admin", description: str = None):
@@ -289,6 +295,35 @@ async def preview_setting_template(
         preview_text = preview_text.replace(placeholder, str(var_value))
     
     return {"preview": preview_text, "variables_used": list(preview_data.keys())}
+
+
+class PingAITestRequest(BaseModel):
+    system_prompt: str
+    test_level: int = 1
+
+
+@router.post("/ping_ai_test")
+async def test_ping_ai_generation(request: PingAITestRequest, db: AsyncSession = Depends(get_db)):
+    """Test AI ping generation with the given system prompt"""
+    
+    if not PingAIService:
+        raise HTTPException(status_code=501, detail="AI service not available")
+    
+    try:
+        ping_ai_service = PingAIService()
+        generated_text = await ping_ai_service.test_generation(
+            system_prompt=request.system_prompt,
+            test_level=request.test_level
+        )
+        
+        return {
+            "generated_text": generated_text,
+            "test_level": request.test_level,
+            "system_prompt_length": len(request.system_prompt)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate AI ping: {str(e)}")
 
 
 @router.delete("/{key}")

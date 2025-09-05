@@ -56,8 +56,8 @@ class PingService:
             return None
             
         now = datetime.utcnow()
-        idle_ping_delay_min = settings.get('idle_ping_delay', 30)
-        ping_frequency_hours = settings.get('ping_frequency_hours', 24)
+        # Use new progressive delay settings, fallback to legacy idle_ping_delay
+        progressive_ping_1_delay = settings.get('progressive_ping_1_delay', settings.get('idle_ping_delay', 30))
         
         async with async_session() as session:
             # Ищем последнее сообщение пользователя
@@ -101,7 +101,7 @@ class PingService:
                 last_ping, 
                 now, 
                 session,
-                idle_ping_delay_min
+                settings
             )
         
         return None
@@ -113,15 +113,20 @@ class PingService:
         last_ping_event, 
         now: datetime,
         session: AsyncSession,
-        idle_ping_delay_min: int
+        settings: Dict
     ) -> Dict:
         """
-        Прогрессивная система пингов:
-        1. Через 30 минут после последнего сообщения
-        2. Через 2 часа после первого пинга  
-        3. Через 24 часа после второго пинга
+        Прогрессивная система пингов с настраиваемыми интервалами:
+        1. Через progressive_ping_1_delay минут после последнего сообщения
+        2. Через progressive_ping_2_delay минут после первого пинга  
+        3. Через progressive_ping_3_delay минут после второго пинга
         """
         time_since_last_message = now - last_message_time
+        
+        # Получаем настройки задержек (в минутах)
+        ping_1_delay = settings.get('progressive_ping_1_delay', settings.get('idle_ping_delay', 30))
+        ping_2_delay = settings.get('progressive_ping_2_delay', 120)  # 2 часа
+        ping_3_delay = settings.get('progressive_ping_3_delay', 1440)  # 24 часа
         
         # Считаем количество пингов после последнего сообщения пользователя
         pings_after_last_message = await session.execute(
@@ -136,28 +141,28 @@ class PingService:
         )
         ping_count = pings_after_last_message.scalar() or 0
         
-        # 1-й пинг: через 30 минут после последнего сообщения
-        if ping_count == 0 and time_since_last_message >= timedelta(minutes=idle_ping_delay_min):
+        # 1-й пинг: через настраиваемое время после последнего сообщения
+        if ping_count == 0 and time_since_last_message >= timedelta(minutes=ping_1_delay):
             return {
                 'type': 'progressive_ping_1',
                 'level': 1,
                 'last_activity': last_message_time
             }
         
-        # 2-й пинг: через 2 часа после первого пинга
+        # 2-й пинг: через настраиваемое время после первого пинга
         if ping_count == 1 and last_ping_event:
             time_since_first_ping = now - last_ping_event.created_at
-            if time_since_first_ping >= timedelta(hours=2):
+            if time_since_first_ping >= timedelta(minutes=ping_2_delay):
                 return {
                     'type': 'progressive_ping_2', 
                     'level': 2,
                     'last_activity': last_message_time
                 }
         
-        # 3-й пинг: через 24 часа после второго пинга
+        # 3-й пинг: через настраиваемое время после второго пинга
         if ping_count == 2 and last_ping_event:
             time_since_second_ping = now - last_ping_event.created_at
-            if time_since_second_ping >= timedelta(hours=24):
+            if time_since_second_ping >= timedelta(minutes=ping_3_delay):
                 return {
                     'type': 'progressive_ping_3',
                     'level': 3, 
@@ -248,18 +253,53 @@ class PingService:
         # Fallback to UTC
         return datetime.utcnow().hour
     
-    async def get_ping_text(self, user: User, settings: Dict, ping_type: str = 'daily_ping') -> str:
+    async def get_ping_text(self, user: User, settings: Dict, ping_type: str = 'progressive_ping_1') -> str:
         """
         Генерирует текст пинга для пользователя
         
         Args:
             user: Пользователь
             settings: Настройки
-            ping_type: Тип пинга ('progressive_ping_1', 'progressive_ping_2', 'progressive_ping_3', 'idle_ping', 'daily_ping')
+            ping_type: Тип пинга ('progressive_ping_1', 'progressive_ping_2', 'progressive_ping_3', 'idle_ping')
             
         Returns:
             Текст пинга
         """
+        # Проверяем, включена ли AI-генерация
+        ai_generation_enabled = settings.get('ping_ai_generation_enabled', False)
+        
+        if ai_generation_enabled:
+            try:
+                return await self._generate_ai_ping_text(user, settings, ping_type)
+            except Exception as e:
+                logger.warning(f"AI ping generation failed for user {user.id}: {e}, falling back to templates")
+        
+        # Используем шаблоны если AI отключен или недоступен
+        return await self._get_template_ping_text(user, settings, ping_type)
+    
+    async def _generate_ai_ping_text(self, user: User, settings: Dict, ping_type: str) -> str:
+        """Генерирует текст пинга с помощью AI"""
+        from .ping_ai_service import PingAIService
+        
+        # Получаем системный промпт и уровень пинга
+        system_prompt = settings.get('ping_ai_system_prompt', 
+            "Создай короткое теплое сообщение для проверки связи с пользователем.")
+        
+        ping_level = int(ping_type.split('_')[-1]) if ping_type.startswith('progressive_ping_') else 1
+        
+        # Формируем контекст о последней активности пользователя
+        user_context = {}
+        
+        ping_ai_service = PingAIService()
+        return await ping_ai_service.generate_ping_text(
+            user=user,
+            ping_level=ping_level,
+            system_prompt=system_prompt,
+            user_context=user_context
+        )
+    
+    async def _get_template_ping_text(self, user: User, settings: Dict, ping_type: str) -> str:
+        """Получает текст пинга из шаблонов (legacy метод)"""
         # Прогрессивные пинги с разной интенсивностью
         if ping_type == 'progressive_ping_1':
             # Первый пинг - мягкий
@@ -373,10 +413,23 @@ class PingService:
                 # Получаем настройки пингов
                 settings = {
                     'ping_enabled': await settings_service.get_setting('ping_enabled', True),
-                    'ping_frequency_hours': await settings_service.get_setting('ping_frequency_hours', 24),
                     'allowed_ping_hours_start': await settings_service.get_setting('allowed_ping_hours_start', 10),
                     'allowed_ping_hours_end': await settings_service.get_setting('allowed_ping_hours_end', 21),
-                    'ping_templates': await settings_service.get_setting('ping_templates', [])
+                    'session_close_timeout': await settings_service.get_setting('session_close_timeout', 48),
+                    
+                    # Progressive ping timing settings
+                    'progressive_ping_1_delay': await settings_service.get_setting('progressive_ping_1_delay', 30),
+                    'progressive_ping_2_delay': await settings_service.get_setting('progressive_ping_2_delay', 120),
+                    'progressive_ping_3_delay': await settings_service.get_setting('progressive_ping_3_delay', 1440),
+                    
+                    # AI settings
+                    'ping_ai_generation_enabled': await settings_service.get_setting('ping_ai_generation_enabled', False),
+                    'ping_ai_system_prompt': await settings_service.get_setting('ping_ai_system_prompt', "Создай короткое теплое сообщение для проверки связи с пользователем."),
+                    
+                    # Template settings
+                    'progressive_ping_1_templates': await settings_service.get_setting('progressive_ping_1_templates', []),
+                    'progressive_ping_2_templates': await settings_service.get_setting('progressive_ping_2_templates', []),
+                    'progressive_ping_3_templates': await settings_service.get_setting('progressive_ping_3_templates', [])
                 }
                 
                 # Проверяем, нужно ли отправлять пинг
@@ -441,10 +494,26 @@ class PingService:
                 
                 settings = {
                     'ping_enabled': ping_enabled,
-                    'ping_frequency_hours': await settings_service.get_setting('ping_frequency_hours', 24),
                     'allowed_ping_hours_start': await settings_service.get_setting('allowed_ping_hours_start', 10),
                     'allowed_ping_hours_end': await settings_service.get_setting('allowed_ping_hours_end', 21),
-                    'ping_templates': await settings_service.get_setting('ping_templates', [])
+                    'session_close_timeout': await settings_service.get_setting('session_close_timeout', 48),
+                    
+                    # Progressive ping timing settings
+                    'progressive_ping_1_delay': await settings_service.get_setting('progressive_ping_1_delay', 30),
+                    'progressive_ping_2_delay': await settings_service.get_setting('progressive_ping_2_delay', 120),
+                    'progressive_ping_3_delay': await settings_service.get_setting('progressive_ping_3_delay', 1440),
+                    
+                    # AI settings
+                    'ping_ai_generation_enabled': await settings_service.get_setting('ping_ai_generation_enabled', False),
+                    'ping_ai_system_prompt': await settings_service.get_setting('ping_ai_system_prompt', "Создай короткое теплое сообщение для проверки связи с пользователем."),
+                    
+                    # Template settings
+                    'progressive_ping_1_templates': await settings_service.get_setting('progressive_ping_1_templates', []),
+                    'progressive_ping_2_templates': await settings_service.get_setting('progressive_ping_2_templates', []),
+                    'progressive_ping_3_templates': await settings_service.get_setting('progressive_ping_3_templates', []),
+                    
+                    # Legacy settings for backward compatibility
+                    'idle_ping_delay': await settings_service.get_setting('idle_ping_delay', 30)
                 }
                 
                 ping_count = 0

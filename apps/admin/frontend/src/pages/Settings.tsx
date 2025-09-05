@@ -66,12 +66,17 @@ const settingTranslations: { [key: string]: string } = {
   'cryptocloud_api_key': 'CryptoCloud API Key',
   'cryptocloud_shop_id': 'CryptoCloud Shop ID',
   'support_contact': 'Контакт поддержки',
-  'idle_ping_delay': 'Задержка внутрисессионного пинга (минуты)',
+  'progressive_ping_1_delay': 'Задержка 1-го прогрессивного пинга (минуты)',
+  'progressive_ping_2_delay': 'Задержка 2-го прогрессивного пинга (минуты)', 
+  'progressive_ping_3_delay': 'Задержка 3-го прогрессивного пинга (минуты)',
+  'ping_ai_generation_enabled': 'Включить AI-генерацию текстов пингов',
+  'ping_ai_system_prompt': 'Системный промпт для AI-генерации пингов',
   'session_close_timeout': 'Таймаут закрытия сессии (часы)',
+  'idle_ping_delay': 'Задержка внутрисессионного пинга (устаревшее)',
   'idle_ping_templates': 'Шаблоны внутрисессионных пингов',
-  'progressive_ping_1_templates': 'Шаблоны 1-го пинга (через 30 мин)',
-  'progressive_ping_2_templates': 'Шаблоны 2-го пинга (через 2 часа)',
-  'progressive_ping_3_templates': 'Шаблоны 3-го пинга (через 24 часа)'
+  'progressive_ping_1_templates': 'Шаблоны 1-го пинга (уровень 1)',
+  'progressive_ping_2_templates': 'Шаблоны 2-го пинга (уровень 2)',
+  'progressive_ping_3_templates': 'Шаблоны 3-го пинга (уровень 3)'
 };
 
 // Функция для получения русского названия настройки
@@ -103,8 +108,8 @@ const settingTabs = {
   },
   pings: {
     title: '🔔 Пинги (Уведомления)',
-    description: 'Настройки проактивных уведомлений от бота',
-    settings: ['ping_enabled', 'ping_templates', 'ping_frequency_hours', 'allowed_ping_hours_start', 'allowed_ping_hours_end', 'idle_ping_delay', 'idle_ping_templates', 'progressive_ping_1_templates', 'progressive_ping_2_templates', 'progressive_ping_3_templates']
+    description: 'Настройки прогрессивной системы пингов и AI-генерации',
+    settings: ['ping_enabled', 'ping_ai_generation_enabled', 'ping_ai_system_prompt', 'allowed_ping_hours_start', 'allowed_ping_hours_end', 'progressive_ping_1_delay', 'progressive_ping_2_delay', 'progressive_ping_3_delay', 'progressive_ping_1_templates', 'progressive_ping_2_templates', 'progressive_ping_3_templates']
   },
   expert: {
     title: '🛠️ Экспертные настройки',
@@ -128,6 +133,7 @@ const booleanSettings = [
   'greeting_enabled',
   'subscription_reminders_enabled', 
   'ping_enabled',
+  'ping_ai_generation_enabled',
   'long_memory_enabled'
 ];
 
@@ -372,6 +378,37 @@ export default function Settings() {
     } catch (error) {
       console.error('Preview error:', error);
       setMessage('❌ Ошибка сети при получении предпросмотра');
+    }
+  };
+
+  const handleAITest = async (setting: Setting) => {
+    try {
+      const token = localStorage.getItem('admin_token');
+      const response = await fetch(`/api/settings/ping_ai_test`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          system_prompt: getSettingValue(setting),
+          test_level: 1
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setPreviewData({
+          key: setting.key,
+          preview: data.generated_text,
+          variables: ['AI-сгенерированный текст']
+        });
+      } else {
+        setMessage('❌ Ошибка при тестировании AI-генерации');
+      }
+    } catch (error) {
+      console.error('AI test error:', error);
+      setMessage('❌ Ошибка сети при тестировании AI');
     }
   };
 
@@ -829,6 +866,14 @@ export default function Settings() {
                       className="bg-green-500 hover:bg-green-700 text-white font-medium py-1 px-3 rounded text-sm"
                     >
                       🔍 Предпросмотр
+                    </button>
+                  )}
+                  {setting.key === 'ping_ai_system_prompt' && (
+                    <button
+                      onClick={() => handleAITest(setting)}
+                      className="bg-purple-500 hover:bg-purple-700 text-white font-medium py-1 px-3 rounded text-sm"
+                    >
+                      🤖 Тест AI
                     </button>
                   )}
                   <button
